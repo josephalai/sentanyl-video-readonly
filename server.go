@@ -16,13 +16,33 @@ func main() {
 	cfg := LoadConfig()
 
 	// Initialize providers
-	storageProvider := storage.NewGCSProvider(cfg.GCPProjectID)
-	transcoderProvider := transcoder.NewGCPTranscoderProvider(cfg.GCPProjectID, cfg.TranscoderRegion)
+	storageProvider, err := storage.NewGCSProvider(cfg.GCPProjectID)
+	if err != nil {
+		log.Fatalf("Failed to initialize GCS storage provider: %v", err)
+	}
+	defer storageProvider.Close()
+
+	transcoderProvider, err := transcoder.NewGCPTranscoderProvider(cfg.GCPProjectID, cfg.TranscoderRegion)
+	if err != nil {
+		log.Fatalf("Failed to initialize GCP Transcoder provider: %v", err)
+	}
+	defer transcoderProvider.Close()
 
 	// Initialize event publisher
 	// Use HTTP callback by default; switch to Pub/Sub via config
 	var publisher events.EventPublisher
-	publisher = events.NewHTTPCallbackPublisher(cfg.SentanylBaseURL, cfg.SentanylCallbackKey)
+	if cfg.PubSubTopic != "" {
+		pubsubPublisher, pubErr := events.NewPubSubPublisher(cfg.GCPProjectID, cfg.PubSubTopic)
+		if pubErr != nil {
+			log.Printf("Failed to initialize Pub/Sub publisher, falling back to HTTP callback: %v", pubErr)
+			publisher = events.NewHTTPCallbackPublisher(cfg.SentanylBaseURL, cfg.SentanylCallbackKey)
+		} else {
+			defer pubsubPublisher.Close()
+			publisher = pubsubPublisher
+		}
+	} else {
+		publisher = events.NewHTTPCallbackPublisher(cfg.SentanylBaseURL, cfg.SentanylCallbackKey)
+	}
 
 	// Create handler with dependencies
 	handler := &handlers.VideoHandler{

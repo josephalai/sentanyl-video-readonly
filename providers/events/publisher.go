@@ -2,11 +2,14 @@ package events
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"time"
+
+	"cloud.google.com/go/pubsub/v2"
 )
 
 // EventPublisher abstracts event publication for the Video Service.
@@ -130,24 +133,90 @@ func (p *HTTPCallbackPublisher) PublishProcessingUpdate(update ProcessingUpdate)
 type PubSubPublisher struct {
 	ProjectID string
 	TopicID   string
+	client    *pubsub.Client
+	publisher *pubsub.Publisher
 }
 
 // NewPubSubPublisher creates a new Pub/Sub publisher.
-func NewPubSubPublisher(projectID, topicID string) *PubSubPublisher {
+func NewPubSubPublisher(projectID, topicID string) (*PubSubPublisher, error) {
+	ctx := context.Background()
+	client, err := pubsub.NewClient(ctx, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Pub/Sub client: %w", err)
+	}
+
+	pub := client.Publisher(topicID)
 	return &PubSubPublisher{
 		ProjectID: projectID,
 		TopicID:   topicID,
+		client:    client,
+		publisher: pub,
+	}, nil
+}
+
+// Close releases the Pub/Sub client resources.
+func (p *PubSubPublisher) Close() error {
+	if p.publisher != nil {
+		p.publisher.Stop()
 	}
+	if p.client != nil {
+		return p.client.Close()
+	}
+	return nil
 }
 
 func (p *PubSubPublisher) PublishEvent(event VideoEvent) error {
-	// TODO: Implement with cloud.google.com/go/pubsub
-	log.Printf("PubSub: Would publish %s event to topic %s", event.EventName, p.TopicID)
+	ctx := context.Background()
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("failed to marshal event: %w", err)
+	}
+
+	result := p.publisher.Publish(ctx, &pubsub.Message{
+		Data: data,
+		Attributes: map[string]string{
+			"event_type": event.EventName,
+			"tenant_id":  event.TenantID,
+			"media_id":   event.MediaPublicId,
+		},
+	})
+
+	// Wait for publish to complete
+	msgID, err := result.Get(ctx)
+	if err != nil {
+		log.Printf("[PubSub] Failed to publish %s event: %v", event.EventName, err)
+		return fmt.Errorf("failed to publish event: %w", err)
+	}
+
+	log.Printf("[PubSub] Published %s event for media %s (msg=%s)", event.EventName, event.MediaPublicId, msgID)
 	return nil
 }
 
 func (p *PubSubPublisher) PublishProcessingUpdate(update ProcessingUpdate) error {
-	// TODO: Implement with cloud.google.com/go/pubsub
-	log.Printf("PubSub: Would publish processing update to topic %s", p.TopicID)
+	ctx := context.Background()
+
+	data, err := json.Marshal(update)
+	if err != nil {
+		return fmt.Errorf("failed to marshal update: %w", err)
+	}
+
+	result := p.publisher.Publish(ctx, &pubsub.Message{
+		Data: data,
+		Attributes: map[string]string{
+			"event_type": "processing_update",
+			"tenant_id":  update.TenantID,
+			"media_id":   update.MediaPublicId,
+			"status":     update.ProcessingStatus,
+		},
+	})
+
+	msgID, err := result.Get(ctx)
+	if err != nil {
+		log.Printf("[PubSub] Failed to publish processing update: %v", err)
+		return fmt.Errorf("failed to publish update: %w", err)
+	}
+
+	log.Printf("[PubSub] Published processing update for media %s (msg=%s)", update.MediaPublicId, msgID)
 	return nil
 }
