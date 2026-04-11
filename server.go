@@ -6,10 +6,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"video-service/handlers"
-	"video-service/providers/events"
-	"video-service/providers/storage"
-	"video-service/providers/transcoder"
+	"github.com/josephalai/sentanyl/video-service/handlers"
+	"github.com/josephalai/sentanyl/video-service/providers/events"
+	"github.com/josephalai/sentanyl/video-service/providers/storage"
+	"github.com/josephalai/sentanyl/video-service/providers/transcoder"
 )
 
 func main() {

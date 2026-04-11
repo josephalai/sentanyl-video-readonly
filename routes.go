@@ -3,7 +3,7 @@ package main
 import (
 	"github.com/gin-gonic/gin"
 
-	"video-service/handlers"
+	"github.com/josephalai/sentanyl/video-service/handlers"
 )
 
 // RegisterRoutes sets up all Video Service routes.

@@ -8,10 +8,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"video-service/models"
-	"video-service/providers/events"
-	"video-service/providers/storage"
-	"video-service/providers/transcoder"
+	"github.com/josephalai/sentanyl/video-service/models"
+	"github.com/josephalai/sentanyl/video-service/providers/events"
+	"github.com/josephalai/sentanyl/video-service/providers/storage"
+	"github.com/josephalai/sentanyl/video-service/providers/transcoder"
 )
 
 // VideoHandler holds dependencies for video service endpoints.
