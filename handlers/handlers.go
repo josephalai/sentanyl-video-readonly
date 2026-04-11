@@ -8,7 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/josephalai/sentanyl/video-service/models"
+	pkgmodels "github.com/josephalai/sentanyl/pkg/models"
 	"github.com/josephalai/sentanyl/video-service/providers/events"
 	"github.com/josephalai/sentanyl/video-service/providers/storage"
 	"github.com/josephalai/sentanyl/video-service/providers/transcoder"
@@ -41,7 +41,7 @@ func (h *VideoHandler) HandleCreateMedia(c *gin.Context) {
 		return
 	}
 
-	status := &models.MediaStatus{
+	status := &pkgmodels.MediaStatus{
 		MediaID:    req.MediaID,
 		TenantID:   req.TenantID,
 		Status:     "created",
@@ -56,7 +56,7 @@ func (h *VideoHandler) HandleCreateMedia(c *gin.Context) {
 func (h *VideoHandler) HandleUpload(c *gin.Context) {
 	mediaID := c.Param("id")
 
-	var req models.UploadRequest
+	var req pkgmodels.UploadRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
@@ -75,7 +75,7 @@ func (h *VideoHandler) HandleUpload(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, &models.UploadResponse{
+	c.JSON(http.StatusOK, &pkgmodels.UploadResponse{
 		UploadURL:   uploadURL,
 		GCSInputURI: gcsURI,
 		ExpiresAt:   time.Now().Add(1 * time.Hour).Format(time.RFC3339),
@@ -86,7 +86,7 @@ func (h *VideoHandler) HandleUpload(c *gin.Context) {
 func (h *VideoHandler) HandleProcess(c *gin.Context) {
 	mediaID := c.Param("id")
 
-	var req models.ProcessRequest
+	var req pkgmodels.ProcessRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
@@ -133,7 +133,7 @@ func (h *VideoHandler) HandleGetStatus(c *gin.Context) {
 	// In production, this would look up the job status from Transcoder API
 	// and/or a local state store
 
-	c.JSON(http.StatusOK, &models.MediaStatus{
+	c.JSON(http.StatusOK, &pkgmodels.MediaStatus{
 		MediaID:          mediaID,
 		Status:           "ready",
 		ProcessingStatus: "succeeded",
@@ -154,10 +154,10 @@ func (h *VideoHandler) HandleGetPlayback(c *gin.Context) {
 
 	outputBase := fmt.Sprintf("%s/outputs/%s/%s", baseURL, tenantID, mediaID)
 
-	playback := &models.PlaybackResponse{
+	playback := &pkgmodels.PlaybackResponse{
 		MediaID: mediaID,
 		Status:  "ready",
-		Sources: []models.PlaybackSource{
+		Sources: []pkgmodels.PlaybackSource{
 			{
 				Type:  "application/x-mpegURL",
 				URL:   fmt.Sprintf("%s/manifest.m3u8", outputBase),
@@ -177,7 +177,7 @@ func (h *VideoHandler) HandleGetPlayback(c *gin.Context) {
 
 // HandleEvent ingests a player event and forwards to Sentanyl.
 func (h *VideoHandler) HandleEvent(c *gin.Context) {
-	var req models.PlayerEvent
+	var req pkgmodels.PlayerEvent
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid event"})
 		return
@@ -208,7 +208,7 @@ func (h *VideoHandler) HandleEvent(c *gin.Context) {
 
 // HandleIdentify links a viewer session to an identity (email, external ID).
 func (h *VideoHandler) HandleIdentify(c *gin.Context) {
-	var req models.IdentifyRequest
+	var req pkgmodels.IdentifyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid identify request"})
 		return
@@ -232,7 +232,7 @@ func (h *VideoHandler) HandleIdentify(c *gin.Context) {
 
 // HandleTranscoderCallback handles Transcoder API job completion callbacks.
 func (h *VideoHandler) HandleTranscoderCallback(c *gin.Context) {
-	var req models.TranscoderCallback
+	var req pkgmodels.TranscoderCallback
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid callback"})
 		return
