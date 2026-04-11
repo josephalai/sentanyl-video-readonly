@@ -111,7 +111,7 @@ func (h *IntelligenceHandler) HandleDeleteMedia(c *gin.Context) {
 		return
 	}
 
-	err := h.Queries.DeleteMedia(tenantID, publicId)
+	_, err := h.Queries.DeleteMedia(tenantID, publicId)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete media"})
 		return
