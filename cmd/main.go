@@ -9,13 +9,31 @@ import (
 
 	"github.com/josephalai/sentanyl/video-service/handlers"
 	"github.com/josephalai/sentanyl/video-service/queries"
+	"github.com/josephalai/sentanyl/pkg/auth"
+	"github.com/josephalai/sentanyl/pkg/db"
+	httputil "github.com/josephalai/sentanyl/pkg/http"
 )
+
+func envOrDefault(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
 
 func main() {
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8084"
 	}
+
+	// Initialize MongoDB connection.
+	db.MongoHost = envOrDefault("MONGO_HOST", "localhost")
+	db.MongoPort = envOrDefault("MONGO_PORT", "27017")
+	db.MongoDB = envOrDefault("MONGO_DB", "sentanyl")
+	db.MongoDefaultCollectionName = "media"
+	db.UsingLocalMongo = true
+	db.InitMongoConnection()
 
 	videoQueries := queries.NewVideoQueries()
 
@@ -24,6 +42,7 @@ func main() {
 	}
 
 	r := gin.Default()
+	r.Use(httputil.CORSMiddleware())
 
 	// Health check
 	r.GET("/health", func(c *gin.Context) {
@@ -32,7 +51,17 @@ func main() {
 
 	// Video intelligence routes (creator-facing) under /api/video/*
 	// matching the Caddy gateway prefix.
+	// RequireTenantAuth validates the JWT; the bridge middleware then forwards
+	// the tenant_id from the gin context into the X-Tenant-ID header so the
+	// existing handler code (which reads that header) continues to work unchanged.
 	video := r.Group("/api/video")
+	video.Use(auth.RequireTenantAuth())
+	video.Use(func(c *gin.Context) {
+		if tid := auth.GetTenantID(c); tid != "" {
+			c.Request.Header.Set("X-Tenant-ID", tid)
+		}
+		c.Next()
+	})
 	{
 		video.GET("/media", intelHandler.HandleListMedia)
 		video.POST("/media", intelHandler.HandleCreateMediaIntel)
@@ -53,6 +82,10 @@ func main() {
 		video.GET("/media/:id/viewers", intelHandler.HandleListViewersByMedia)
 		video.GET("/media/:id/sessions", intelHandler.HandleListSessionsByMedia)
 	}
+
+	// Player event ingestion — no auth, called from visitor browsers.
+	// Returns viewer_id, session_id, and any badge_public_ids to grant.
+	r.POST("/api/video/events", intelHandler.HandleIngestEvent)
 
 	// Tracking
 	r.GET("/api/track/click/:token", handlers.HandleClickTracking)

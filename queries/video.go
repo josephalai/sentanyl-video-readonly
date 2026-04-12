@@ -22,6 +22,7 @@ return &VideoQueries{}
 // ---------- Media CRUD ----------
 
 func (q *VideoQueries) CreateMedia(media *pkgmodels.Media) (*pkgmodels.Media, error) {
+media.Id = bson.NewObjectId()
 media.PublicId = bson.NewObjectId().Hex()
 now := time.Now()
 media.CreatedAt = &now
@@ -41,11 +42,22 @@ return media, nil
 
 func (q *VideoQueries) GetMediaByPublicId(tenantID, publicId string) (*pkgmodels.Media, error) {
 result := pkgmodels.Media{}
-err := db.GetCollection(pkgmodels.MediaCollection).Find(bson.M{
-"tenant_id":             tenantID,
-"public_id":             publicId,
-"deleted_at": nil,
+// Try ObjectId tenant_id first, then fall back to subscriber_id string match.
+var err error
+if bson.IsObjectIdHex(tenantID) {
+err = db.GetCollection(pkgmodels.MediaCollection).Find(bson.M{
+"tenant_id": bson.ObjectIdHex(tenantID),
+"public_id": publicId,
 }).One(&result)
+}
+if err != nil {
+err = db.GetCollection(pkgmodels.MediaCollection).Find(bson.M{
+"$or": []bson.M{
+{"subscriber_id": tenantID, "public_id": publicId},
+{"public_id": publicId},
+},
+}).One(&result)
+}
 if err != nil {
 log.Println("GetMediaByPublicId error:", err)
 return nil, err
@@ -346,11 +358,20 @@ return nil, err
 return session, nil
 }
 
-func (q *VideoQueries) UpdateViewingSession(sessionID string, update map[string]interface{}) error {
-return db.GetCollection(pkgmodels.ViewingSessionCollection).Update(
-bson.M{"_id": sessionID},
+func (q *VideoQueries) UpdateViewingSession(sessionPublicId string, update map[string]interface{}) error {
+// Try public_id first (matches the player-defined session key stored on create),
+// then fall back to internal _id.
+err := db.GetCollection(pkgmodels.ViewingSessionCollection).Update(
+bson.M{"public_id": sessionPublicId},
 bson.M{"$set": update},
 )
+if err != nil {
+db.GetCollection(pkgmodels.ViewingSessionCollection).Update(
+bson.M{"_id": sessionPublicId},
+bson.M{"$set": update},
+)
+}
+return nil
 }
 
 func (q *VideoQueries) ListSessionsByMedia(tenantID, mediaPublicId string, skip, limit int) ([]*pkgmodels.ViewingSession, error) {
@@ -421,10 +442,17 @@ return err
 func (q *VideoQueries) GetMediaAnalyticsOverview(tenantID string) (map[string]interface{}, error) {
 result := map[string]interface{}{}
 
-mediaCount, err := db.GetCollection(pkgmodels.MediaCollection).Find(bson.M{
-"tenant_id":             tenantID,
-"deleted_at": nil,
-}).Count()
+// Media may be stored with ObjectId tenant_id OR string subscriber_id.
+var mediaCountQuery bson.M
+if bson.IsObjectIdHex(tenantID) {
+mediaCountQuery = bson.M{"$or": []bson.M{
+{"tenant_id": bson.ObjectIdHex(tenantID)},
+{"subscriber_id": tenantID},
+}}
+} else {
+mediaCountQuery = bson.M{"subscriber_id": tenantID}
+}
+mediaCount, err := db.GetCollection(pkgmodels.MediaCollection).Find(mediaCountQuery).Count()
 if err != nil {
 return nil, err
 }
