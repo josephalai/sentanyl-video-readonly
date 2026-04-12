@@ -30,27 +30,28 @@ func main() {
 		c.JSON(200, gin.H{"status": "ok", "service": "video-service"})
 	})
 
-	// Intelligence routes (creator-facing)
-	intel := r.Group("/api/v1/intel")
+	// Video intelligence routes (creator-facing) under /api/video/*
+	// matching the Caddy gateway prefix.
+	video := r.Group("/api/video")
 	{
-		intel.GET("/media", intelHandler.HandleListMedia)
-		intel.POST("/media", intelHandler.HandleCreateMediaIntel)
-		intel.GET("/media/:id", intelHandler.HandleGetMedia)
-		intel.PUT("/media/:id", intelHandler.HandleUpdateMedia)
-		intel.DELETE("/media/:id", intelHandler.HandleDeleteMedia)
+		video.GET("/media", intelHandler.HandleListMedia)
+		video.POST("/media", intelHandler.HandleCreateMediaIntel)
+		video.GET("/media/:id", intelHandler.HandleGetMedia)
+		video.PUT("/media/:id", intelHandler.HandleUpdateMedia)
+		video.DELETE("/media/:id", intelHandler.HandleDeleteMedia)
 
-		intel.GET("/presets", intelHandler.HandleListPlayerPresets)
-		intel.POST("/presets", intelHandler.HandleCreatePlayerPreset)
+		video.GET("/presets", intelHandler.HandleListPlayerPresets)
+		video.POST("/presets", intelHandler.HandleCreatePlayerPreset)
 
-		intel.GET("/channels", intelHandler.HandleListChannels)
-		intel.POST("/channels", intelHandler.HandleCreateChannel)
+		video.GET("/channels", intelHandler.HandleListChannels)
+		video.POST("/channels", intelHandler.HandleCreateChannel)
 
-		intel.GET("/webhooks", intelHandler.HandleListWebhooks)
-		intel.POST("/webhooks", intelHandler.HandleCreateWebhook)
+		video.GET("/webhooks", intelHandler.HandleListWebhooks)
+		video.POST("/webhooks", intelHandler.HandleCreateWebhook)
 
-		intel.GET("/analytics/overview", intelHandler.HandleGetAnalyticsOverview)
-		intel.GET("/media/:id/viewers", intelHandler.HandleListViewersByMedia)
-		intel.GET("/media/:id/sessions", intelHandler.HandleListSessionsByMedia)
+		video.GET("/analytics/overview", intelHandler.HandleGetAnalyticsOverview)
+		video.GET("/media/:id/viewers", intelHandler.HandleListViewersByMedia)
+		video.GET("/media/:id/sessions", intelHandler.HandleListSessionsByMedia)
 	}
 
 	// Tracking
