@@ -164,8 +164,66 @@ func (h *IntelligenceHandler) HandleCreatePlayerPreset(c *gin.Context) {
 		return
 	}
 
-	// TODO: Implement full preset creation via queries layer
-	c.JSON(http.StatusCreated, gin.H{"status": "created", "tenant_id": tenantID})
+	var preset pkgmodels.PlayerPreset
+	if err := c.ShouldBindJSON(&preset); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid preset body"})
+		return
+	}
+
+	preset.SubscriberId = tenantID
+	if bson.IsObjectIdHex(tenantID) {
+		preset.TenantID = bson.ObjectIdHex(tenantID)
+	}
+
+	created, err := h.Queries.CreatePlayerPreset(&preset)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create preset"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, created)
+}
+
+func (h *IntelligenceHandler) HandleUpdatePlayerPreset(c *gin.Context) {
+	tenantID := c.GetHeader("X-Tenant-ID")
+	id := c.Param("id")
+	if tenantID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	var update map[string]interface{}
+	if err := c.ShouldBindJSON(&update); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+	delete(update, "_id")
+	delete(update, "id")
+	delete(update, "tenant_id")
+	delete(update, "subscriber_id")
+	delete(update, "public_id")
+	delete(update, "timestamps")
+
+	preset, err := h.Queries.UpdatePlayerPreset(tenantID, id, update)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update preset"})
+		return
+	}
+	c.JSON(http.StatusOK, preset)
+}
+
+func (h *IntelligenceHandler) HandleDeletePlayerPreset(c *gin.Context) {
+	tenantID := c.GetHeader("X-Tenant-ID")
+	id := c.Param("id")
+	if tenantID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	if err := h.Queries.DeletePlayerPresetByID(tenantID, id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete preset"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
 }
 
 // ---------- MediaChannel Handlers ----------

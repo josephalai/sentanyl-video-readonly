@@ -2,12 +2,16 @@ package storage
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"time"
 
 	"cloud.google.com/go/storage"
+	"google.golang.org/api/option"
+	htransport "google.golang.org/api/transport/http"
 )
 
 // StorageProvider abstracts cloud object storage operations.
@@ -36,9 +40,27 @@ type GCSProvider struct {
 
 // NewGCSProvider creates a new GCS storage provider.
 // Uses Application Default Credentials (ADC) for authentication.
+//
+// The client forces HTTP/1.1 because some network paths (certain residential
+// ISPs, dev containers behind NAT) reset long-lived HTTP/2 streams mid-upload
+// with "http2: client connection lost", which the GCS SDK cannot retry past.
 func NewGCSProvider(projectID string) (*GCSProvider, error) {
 	ctx := context.Background()
-	client, err := storage.NewClient(ctx)
+
+	// Base transport with HTTP/2 disabled.
+	base := http.DefaultTransport.(*http.Transport).Clone()
+	base.ForceAttemptHTTP2 = false
+	base.TLSNextProto = make(map[string]func(authority string, c *tls.Conn) http.RoundTripper)
+
+	// Wrap with Google auth (ADC) so the HTTP client carries bearer tokens.
+	authed, err := htransport.NewTransport(ctx, base, option.WithScopes(storage.ScopeFullControl))
+	if err != nil {
+		return nil, fmt.Errorf("failed to build authed GCS transport: %w", err)
+	}
+
+	httpClient := &http.Client{Transport: authed}
+
+	client, err := storage.NewClient(ctx, option.WithHTTPClient(httpClient))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCS client: %w", err)
 	}
@@ -119,6 +141,10 @@ func (g *GCSProvider) UploadObject(bucket, objectPath, contentType string, data 
 	wc := g.client.Bucket(bucket).Object(objectPath).NewWriter(ctx)
 	wc.ContentType = contentType
 	wc.CacheControl = "public, max-age=31536000"
+	// Force chunked resumable uploads so transient HTTP/2 disconnects are retried
+	// per-chunk instead of failing the whole upload. Default is 16 MiB single-shot
+	// for files below that threshold, which is brittle on flaky networks.
+	wc.ChunkSize = 4 << 20 // 4 MiB
 
 	if _, err := io.Copy(wc, data); err != nil {
 		wc.Close()

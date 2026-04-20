@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/josephalai/sentanyl/video-service/handlers"
+	"github.com/josephalai/sentanyl/video-service/providers/storage"
 	"github.com/josephalai/sentanyl/video-service/queries"
 	"github.com/josephalai/sentanyl/pkg/auth"
 	"github.com/josephalai/sentanyl/pkg/db"
@@ -41,6 +42,18 @@ func main() {
 		Queries: videoQueries,
 	}
 
+	// Initialize object storage for tenant asset uploads.
+	// If credentials are missing the service still starts — upload handler 503s.
+	bucket := envOrDefault("GCS_BUCKET", "sendhero-videos")
+	projectID := envOrDefault("GCS_PROJECT_ID", envOrDefault("GCP_PROJECT_ID", "sendhero"))
+	assetsHandler := &handlers.AssetsHandler{Bucket: bucket}
+	if storageProvider, serr := storage.NewGCSProvider(projectID); serr != nil {
+		log.Printf("WARN: GCS storage provider init failed, asset uploads disabled: %v", serr)
+	} else {
+		defer storageProvider.Close()
+		assetsHandler.Storage = storageProvider
+	}
+
 	r := gin.Default()
 	r.Use(httputil.CORSMiddleware())
 
@@ -71,6 +84,10 @@ func main() {
 
 		video.GET("/presets", intelHandler.HandleListPlayerPresets)
 		video.POST("/presets", intelHandler.HandleCreatePlayerPreset)
+		video.PUT("/presets/:id", intelHandler.HandleUpdatePlayerPreset)
+		video.DELETE("/presets/:id", intelHandler.HandleDeletePlayerPreset)
+
+		video.POST("/assets/upload", assetsHandler.HandleUpload)
 
 		video.GET("/channels", intelHandler.HandleListChannels)
 		video.POST("/channels", intelHandler.HandleCreateChannel)

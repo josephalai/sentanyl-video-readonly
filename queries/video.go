@@ -148,14 +148,65 @@ return &result, nil
 
 func (q *VideoQueries) ListPlayerPresets(tenantID string) ([]*pkgmodels.PlayerPreset, error) {
 result := []*pkgmodels.PlayerPreset{}
-err := db.GetCollection(pkgmodels.PlayerPresetCollection).Find(bson.M{
-"tenant_id":             tenantID,
-"deleted_at": nil,
-}).Sort("-created_at").All(&result)
+query := bson.M{"timestamps.deleted_at": nil}
+if bson.IsObjectIdHex(tenantID) {
+query["$or"] = []bson.M{
+{"tenant_id": bson.ObjectIdHex(tenantID)},
+{"subscriber_id": tenantID},
+}
+} else {
+query["subscriber_id"] = tenantID
+}
+err := db.GetCollection(pkgmodels.PlayerPresetCollection).Find(query).Sort("-timestamps.created_at").All(&result)
 if err != nil {
 return nil, err
 }
 return result, nil
+}
+
+// tenantScopedByIDFilter returns a filter matching a preset by its Mongo _id hex
+// and scoped to the tenant via tenant_id (ObjectId) or subscriber_id (string).
+func tenantScopedByIDFilter(tenantID, id string) (bson.M, bool) {
+if !bson.IsObjectIdHex(id) {
+return nil, false
+}
+filter := bson.M{"_id": bson.ObjectIdHex(id)}
+if bson.IsObjectIdHex(tenantID) {
+filter["$or"] = []bson.M{
+{"tenant_id": bson.ObjectIdHex(tenantID)},
+{"subscriber_id": tenantID},
+}
+} else {
+filter["subscriber_id"] = tenantID
+}
+return filter, true
+}
+
+func (q *VideoQueries) UpdatePlayerPreset(tenantID, id string, update map[string]interface{}) (*pkgmodels.PlayerPreset, error) {
+filter, ok := tenantScopedByIDFilter(tenantID, id)
+if !ok {
+return nil, mgo.ErrNotFound
+}
+update["timestamps.updated_at"] = time.Now()
+if err := db.GetCollection(pkgmodels.PlayerPresetCollection).Update(filter, bson.M{"$set": update}); err != nil {
+return nil, err
+}
+var result pkgmodels.PlayerPreset
+if err := db.GetCollection(pkgmodels.PlayerPresetCollection).FindId(bson.ObjectIdHex(id)).One(&result); err != nil {
+return nil, err
+}
+return &result, nil
+}
+
+func (q *VideoQueries) DeletePlayerPresetByID(tenantID, id string) error {
+filter, ok := tenantScopedByIDFilter(tenantID, id)
+if !ok {
+return mgo.ErrNotFound
+}
+return db.GetCollection(pkgmodels.PlayerPresetCollection).Update(
+filter,
+bson.M{"$set": bson.M{"timestamps.deleted_at": time.Now()}},
+)
 }
 
 func (q *VideoQueries) DeletePlayerPreset(tenantID, publicId string) (*pkgmodels.PlayerPreset, error) {
