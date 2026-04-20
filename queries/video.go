@@ -19,6 +19,18 @@ func NewVideoQueries() *VideoQueries {
 return &VideoQueries{}
 }
 
+// tenantOrSubscriberFilter returns a bson.M that matches documents by either
+// ObjectId tenant_id or string subscriber_id, handling both storage patterns.
+func tenantOrSubscriberFilter(tenantID string) bson.M {
+if bson.IsObjectIdHex(tenantID) {
+return bson.M{"$or": []bson.M{
+{"tenant_id": bson.ObjectIdHex(tenantID)},
+{"subscriber_id": tenantID},
+}}
+}
+return bson.M{"subscriber_id": tenantID}
+}
+
 // ---------- Media CRUD ----------
 
 func (q *VideoQueries) CreateMedia(media *pkgmodels.Media) (*pkgmodels.Media, error) {
@@ -67,14 +79,29 @@ return &result, nil
 
 func (q *VideoQueries) ListMedia(tenantID, status string, skip, limit int) ([]*pkgmodels.Media, error) {
 result := []*pkgmodels.Media{}
+
+// Media may be stored with ObjectId tenant_id OR string subscriber_id —
+// match both the same way GetMediaByPublicId does.
+var tenantFilter bson.M
+if bson.IsObjectIdHex(tenantID) {
+tenantFilter = bson.M{"$or": []bson.M{
+{"tenant_id": bson.ObjectIdHex(tenantID)},
+{"subscriber_id": tenantID},
+}}
+} else {
+tenantFilter = bson.M{"subscriber_id": tenantID}
+}
+
 query := bson.M{
-"tenant_id":             tenantID,
-"deleted_at": nil,
+"$and": []bson.M{
+tenantFilter,
+{"timestamps.deleted_at": nil},
+},
 }
 if status != "" {
 query["status"] = status
 }
-mgoQ := db.GetCollection(pkgmodels.MediaCollection).Find(query).Sort("-created_at")
+mgoQ := db.GetCollection(pkgmodels.MediaCollection).Find(query).Sort("-timestamps.created_at")
 if skip > 0 {
 mgoQ = mgoQ.Skip(skip)
 }
@@ -90,8 +117,11 @@ return result, nil
 
 func (q *VideoQueries) UpdateMedia(tenantID, publicId string, update map[string]interface{}) (*pkgmodels.Media, error) {
 update["timestamps.updated_at"] = time.Now()
+tenantFilter := tenantOrSubscriberFilter(tenantID)
+tenantFilter["public_id"] = publicId
+tenantFilter["timestamps.deleted_at"] = nil
 err := db.GetCollection(pkgmodels.MediaCollection).Update(
-bson.M{"tenant_id": tenantID, "public_id": publicId, "deleted_at": nil},
+tenantFilter,
 bson.M{"$set": update},
 )
 if err != nil {
@@ -135,11 +165,10 @@ return preset, nil
 
 func (q *VideoQueries) GetPlayerPresetByPublicId(tenantID, publicId string) (*pkgmodels.PlayerPreset, error) {
 result := pkgmodels.PlayerPreset{}
-err := db.GetCollection(pkgmodels.PlayerPresetCollection).Find(bson.M{
-"tenant_id":             tenantID,
-"public_id":             publicId,
-"deleted_at": nil,
-}).One(&result)
+filter := tenantOrSubscriberFilter(tenantID)
+filter["public_id"] = publicId
+filter["timestamps.deleted_at"] = nil
+err := db.GetCollection(pkgmodels.PlayerPresetCollection).Find(filter).One(&result)
 if err != nil {
 return nil, err
 }
@@ -239,10 +268,9 @@ return channel, nil
 
 func (q *VideoQueries) ListMediaChannels(tenantID string) ([]*pkgmodels.MediaChannel, error) {
 result := []*pkgmodels.MediaChannel{}
-err := db.GetCollection(pkgmodels.MediaChannelCollection).Find(bson.M{
-"tenant_id":             tenantID,
-"deleted_at": nil,
-}).Sort("-created_at").All(&result)
+filter := tenantOrSubscriberFilter(tenantID)
+filter["timestamps.deleted_at"] = nil
+err := db.GetCollection(pkgmodels.MediaChannelCollection).Find(filter).Sort("-timestamps.created_at").All(&result)
 if err != nil {
 return nil, err
 }
@@ -251,11 +279,10 @@ return result, nil
 
 func (q *VideoQueries) GetMediaChannelByPublicId(tenantID, publicId string) (*pkgmodels.MediaChannel, error) {
 result := pkgmodels.MediaChannel{}
-err := db.GetCollection(pkgmodels.MediaChannelCollection).Find(bson.M{
-"tenant_id":             tenantID,
-"public_id":             publicId,
-"deleted_at": nil,
-}).One(&result)
+filter := tenantOrSubscriberFilter(tenantID)
+filter["public_id"] = publicId
+filter["timestamps.deleted_at"] = nil
+err := db.GetCollection(pkgmodels.MediaChannelCollection).Find(filter).One(&result)
 if err != nil {
 return nil, err
 }
@@ -292,10 +319,9 @@ return webhook, nil
 
 func (q *VideoQueries) ListMediaWebhooks(tenantID string) ([]*pkgmodels.MediaWebhook, error) {
 result := []*pkgmodels.MediaWebhook{}
-err := db.GetCollection(pkgmodels.MediaWebhookCollection).Find(bson.M{
-"tenant_id":             tenantID,
-"deleted_at": nil,
-}).Sort("-created_at").All(&result)
+filter := tenantOrSubscriberFilter(tenantID)
+filter["timestamps.deleted_at"] = nil
+err := db.GetCollection(pkgmodels.MediaWebhookCollection).Find(filter).Sort("-timestamps.created_at").All(&result)
 if err != nil {
 return nil, err
 }
@@ -304,11 +330,10 @@ return result, nil
 
 func (q *VideoQueries) GetMediaWebhookByPublicId(tenantID, publicId string) (*pkgmodels.MediaWebhook, error) {
 result := pkgmodels.MediaWebhook{}
-err := db.GetCollection(pkgmodels.MediaWebhookCollection).Find(bson.M{
-"tenant_id":             tenantID,
-"public_id":             publicId,
-"deleted_at": nil,
-}).One(&result)
+filter := tenantOrSubscriberFilter(tenantID)
+filter["public_id"] = publicId
+filter["timestamps.deleted_at"] = nil
+err := db.GetCollection(pkgmodels.MediaWebhookCollection).Find(filter).One(&result)
 if err != nil {
 return nil, err
 }
