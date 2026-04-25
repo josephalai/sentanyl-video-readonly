@@ -10,7 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gopkg.in/mgo.v2/bson"
 
-	"github.com/josephalai/sentanyl/video-service/providers/storage"
+	"github.com/josephalai/sentanyl/pkg/storage"
 )
 
 // AssetsHandler handles generic tenant asset uploads (media source files).

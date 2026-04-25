@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/josephalai/sentanyl/video-service/handlers"
-	"github.com/josephalai/sentanyl/video-service/providers/storage"
+	"github.com/josephalai/sentanyl/pkg/storage"
 	"github.com/josephalai/sentanyl/video-service/queries"
 	"github.com/josephalai/sentanyl/pkg/auth"
 	"github.com/josephalai/sentanyl/pkg/db"

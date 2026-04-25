@@ -10,7 +10,7 @@ import (
 
 	pkgmodels "github.com/josephalai/sentanyl/pkg/models"
 	"github.com/josephalai/sentanyl/video-service/providers/events"
-	"github.com/josephalai/sentanyl/video-service/providers/storage"
+	"github.com/josephalai/sentanyl/pkg/storage"
 	"github.com/josephalai/sentanyl/video-service/providers/transcoder"
 )
 
